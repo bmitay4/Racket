@@ -97,117 +97,35 @@ Keep in mind
 4. Free Instance: An identifier that is not contained in the scope of any binding instance of its name is said to be free.
 |#
 
-#|
-subst will substitutes the second argument with the third argument in the first argument as per the rules of the substitution.
-The resulting expression contains no free instances of the second argument
 
-N[v/x] = N
-{+ E1 E2}[v/x] = {+ E1[v/x] E2[v/x]}
-{- E1 E2}[v/x] = {- E1[v/x] E2[v/x]}
-{* E1 E2}[v/x] = {* E1[v/x] E2[v/x]}
-{/ E1 E2}[v/x] = {/ E1[v/x] E2[v/x]}
+#| Evaluation 
 
-y[v/x] = y
-x[v/x] = v
+eval(N, sc) = N
 
-{with {y E1} E2}[v/x] = {with {y E1[v/x]} E2[v/x]}
-{with {x E1} E2}[v/x] = {with {x E1[v/x]} E2}
+eval({+ E1 E2}, sc) = eval(E1, sc) + eval(E2, sc)
+                      if eval(E1) and eval(E2) return numbers
+                      otherwise Error
 
-{call E1 E2} = {call E1[v/x] E2[v/x]}
+eval({- E1 E2}, sc) = eval(E1, sc) - eval(E2, sc)
+                      if eval(E1) and eval(E2) return numbers
+                      otherwise Error
 
-{fun {y} E[v/x]} = {fun {y} E[v/x]}
-|#
+eval({* E1 E2}, sc) = eval(E1, sc) * eval(E2, sc)
+                      if eval(E1) and eval(E2) return numbers
+                      otherwise Error
 
-(: subst : FLANG Symbol FLANG -> FLANG)  
-(define (subst expr from to)
-  (cases expr
-    [(Num n) expr]
-    [(Add l r) (Add (subst l from to) (subst r from to))]
-    [(Sub l r) (Sub (subst l from to) (subst r from to))]
-    [(Mul l r) (Mul (subst l from to) (subst r from to))]
-    [(Div l r) (Div (subst l from to) (subst r from to))]
-    [(With name named body)
-     (With name
-           (subst named from to)
-           (if (eq? name from)
-               body
-               (subst body from to)))]
-    [(Id name) (if (eq? name from) to expr)]
-    [(Fun name body)
-     (Fun name (if (eq? name from) body (subst body from to)))]
-    [(Call fun-exp arg-exp) (Call (subst fun-exp from to)
-                                  (subst arg-exp from to))]))
+eval({/ E1 E2}, sc) = eval(E1, sc) / eval(E2, sc)
+                      if eval(E1) and eval(E2) return numbers
+                      otherwise Error
 
-(test (subst (Fun 'x (Add (Id 'x) (Id 'y)))
-             'x
-             (Num 4))
-      => (Fun 'x (Add (Id 'x) (Id 'y))))
+eval(id) = lookup(id, sc)
 
-(test (subst (Fun 'x (Add (Id 'x) (Id 'y)))
-             'y
-             (Num 4)) => (Fun 'x (Add (Id 'x) (Num 4))))
+eval({with {x E1} E2}, sc) = eval(E2, extends(x, eval(E1, sc), sc))
 
-(test (subst (Call (Fun 'x (Div (Id 'x)
-                                (Id 'y)))
-                   (Add (Id 'x) (Id 'y)))
-             'x
-             (Num 3))
-      => (Call (Fun 'x (Div (Id 'x)
-                            (Id 'y)))
-               (Add (Num 3) (Id 'y))))
+eval({fun {x} E}, sc) = (fun {x} E)
 
-(test (subst (Call (Fun 'x (Div (Id 'x)
-                                (Id 'y)))
-                   (Add (Id 'x) (Id 'y)))
-             'y
-             (Num 3))
-      => (Call (Fun 'x (Div (Id 'x)
-                            (Num 3)))
-               (Add (Id 'x) (Num 3))))
-
-(test (subst (Add (Call (Id 'sqr) (Num 5))
-                  (Call (Id 'sqr) (Num 6)))
-             'sqr
-             (Fun 'x (Mul (Id 'x) (Id 'x))))
-      => (Add (Call (Fun 'x (Mul (Id 'x) (Id 'x))) (Num 5))
-              (Call (Fun 'x (Mul (Id 'x) (Id 'x))) (Num 6))))
-
-#| Evaluation of with
-
-eval({with {x E1} E2})
-1. v <- eval(E1)
-2. E2' <- subst(E2, x, y)
-3. eval(E2')
-
-eval(subst E2 x (eval E1)))
-
-Consider the following example:
-(eval (With 'x
-            (Add (Num 5) (Num 3))
-            (Mul (Id 'x) (Id 'x)))
-
-(1) v <- (eval (Add (Num 5) (Num 3)))
-(2) E2' <- (subst (Mul (Id 'x) (Id 'x)) 'x (Num 8)) ;;NOTE! it can't be just 8, because the third element of subst is FLANG, not <num>
-(3) (eval (Mul (Num 8) (Num 8)))
-
-eval(N) = N
-
-eval({+ E1 E2}) = eval(E1) + eval(E2)
-
-eval({- E1 E2}) = eval(E1) - eval(E2)
-
-eval({* E1 E2}) = eval(E1) * eval(E2)
-
-eval({/ E1 E2}) = eval(E1) / eval(E2)
-
-eval(id) = ERROR!
-
-eval({with {x E1} E2}) = eval(E2 [eval(E1)/x])
-
-eval({fun {x} E}) = (fun {x} E)
-
-eval({call E1 E2}) = if {fun {x} Ef} <-- eval(E1)
-                         eval(Ef[eval(E2)/x])
+eval({call E1 E2}, sc) = if {fun {x} Ef} <-- eval(E1, sc)
+                         eval(Ef, extend(x, eval(E2, sc), sc))
                      otherwise ERROR!
 
 |#
@@ -222,65 +140,35 @@ eval({call E1 E2}) = if {fun {x} Ef} <-- eval(E1)
   (Num (op (Num->Number arg1) (Num->Number arg2))))
 
 
-(: eval : FLANG -> FLANG)
-(define (eval expr)
+(: eval : FLANG SubstCache -> FLANG)
+(define (eval expr sc)
   (cases expr
     [(Num n) expr]
-    [(Add l r) (arith-op + (eval l) (eval r))]
-    [(Sub l r) (arith-op - (eval l) (eval r))]
-    [(Mul l r) (arith-op * (eval l) (eval r))]
-    [(Div l r) (arith-op / (eval l) (eval r))]
+    [(Add l r) (arith-op + (eval l sc) (eval r sc))]
+    [(Sub l r) (arith-op - (eval l sc) (eval r sc))]
+    [(Mul l r) (arith-op * (eval l sc) (eval r sc))]
+    [(Div l r) (arith-op / (eval l sc) (eval r sc))]
     [(With name named-expr body)
-     (eval (subst body
-                  name
-                  (eval named-expr)))]
-    [(Id name) (error 'eval "free instance: ~s" name)]
+     (eval body (extend name
+                  (eval named-expr sc)
+                  sc))]
+    [(Id name) (lookup name sc)]
     [(Fun name body) expr]
     [(Call fun-expr arg-expr)
-     (let ([fval (eval fun-expr)])
+     (let ([fval (eval fun-expr sc)])
        (cases fval
          [(Fun name body)
-          (eval (subst body name (eval arg-expr)))]
+          (eval body
+                (extend name (eval arg-expr sc) sc))]
          [else (error 'eval "expect a function, got: ~s" fval)]))]))
-      
-
-#|(: run : String -> FLANG)
-(define (run code)
-  (eval(parse code)))
-|#
-
-(test (eval (With 'x
-                  (Add (Num 5) (Num 3))
-                  (Mul (Id 'x) (Id 'x)))) => (Num 64))
-(test (eval (With 'x
-                  (Add (Num 5) (Num 3))
-                  (Mul (Id 'x) (Id 'y)))) =error> "free instance")
-;;(test (eval "{with {x 5}
-;;                  {+ 5 {with {x 3} x}}}") => (Num 8))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(: run : String -> Number)
-(define (run code)
-  (let ([res (eval(parse code))])
-    (cases res
-      [(Num n) n]
-      [else (error 'run "evaluation returned a non-number: ~s" res)])))
-#|
-(test (run "{with {x 5}
-                  {+ 5 {with {x 3} x}}}") => 8)
-(test (run "{with {fun {x} {+ x 1}} 4}") =error> "bad with syntax in")
-(test (run "{call {with {foo {fun {y} {- y 6}}}
-                         foo}
-                         10}") => 4)
-|#
-
-#|
-Subtituation Cache
-A new type for subtituation cache
-|#
-
+;; Substitution Cache
+;; A type for substitution cache
 (define-type SubstCache = (Listof (List Symbol FLANG)))
+
 (: empty-subst : SubstCache)
 (define empty-subst null)
 
@@ -295,14 +183,66 @@ A new type for subtituation cache
         (second cell)
         (error 'lookup "free identifier ~s" name))))
 
+;;assq - internal function at Racket which get a value and a list, and look for the
+;;value in within the list.
+;;If not found, return #f
+
+
+(: run : String -> Number)
+(define (run code)
+  (let ([res (eval(parse code) empty-subst)])
+    (cases res
+      [(Num n) n]
+      [else (error 'run "evaluation returned a non-number: ~s" res)])))
 #|
-(cond [(null? sc) (error 'lookup "free identifier ~s" name)]
-        [(eq? name (first (first sc))) (second (first sc))]
-        [else (lookup name (rest sc))]))
+(test (run "{with {x 5}
+                  {+ 5 {with {x 3} x}}}") => 8)
+(test (run "{with {fun {x} {+ x 1}} 4}") =error> "bad with syntax in")
+(test (run "{call {with {foo {fun {y} {- y 6}}}
+                         foo}
+                         10}") => 4)
 |#
 
-#|
-lookup(x, empty-subst) = error!
-lookup(x, extend(x, E, sc)) = error!
-lookup(x, extend(y, E, sc)) = lookup(x, sc) if 'x exist error!
-|#
+(test (lookup 'x
+              (extend 'y
+                      (Num 5)
+                      (extend 'x
+                              (Num 33)
+                              (extend 'foo
+                                      (Fun 'x (Id 'x))
+                                      (extend 'w (Num 5) empty-subst)))))
+        => (Num 33))
+
+(test (lookup 'x
+              (extend 'x (Num 0)
+                         (extend 'z (Num 5)
+                                    (extend 'x (Num 7)
+                                               (extend 'foo (Fun 'x (Id 'y))
+                                                       empty-subst)))))
+      => (Num 0))
+(test (lookup 'foo
+              (extend 'x (Num 0)
+                         (extend 'z (Num 5)
+                                    (extend 'x (Num 7)
+                                               (extend 'foo (Fun 'x (Id 'y))
+                                                       empty-subst)))))
+      => (Fun 'x (Id 'y)))
+
+(test (lookup 'foo
+              (extend 'y
+                      (Num 5)
+                      (extend 'x
+                              (Num 33)
+                              (extend 'foo
+                                      (Fun 'x (Id 'x))
+                                      (extend 'w (Num 5) empty-subst)))))
+        => (Fun 'x (Id 'x)))
+(test (lookup 'f
+              (extend 'y
+                      (Num 5)
+                      (extend 'x
+                              (Num 33)
+                              (extend 'foo
+                                      (Fun 'x (Id 'x))
+                                      (extend 'w (Num 5) empty-subst)))))
+        =error> "free identifier")
