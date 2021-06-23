@@ -400,7 +400,7 @@ parse solution
     (cases result
       [(SetV S) S]
       [(BoolV b) b]
-      [else result])))
+      [else result]))) ;;Should it return error, bad evaluation. TODO.
 
 
 (test (run "{1 2 3  4 1 4  4 2 3 4 1 2 3}") => '(1 2 3 4))
